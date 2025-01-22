@@ -150,20 +150,147 @@ pbp_r_p_s_pl |>
 
 # 1. Create the same histograms as in "Histograms" on page 30 but for EPA per pass attempt
 
-ggplot(pbp_r_1624, aes(x = epa)) + 
-  geom_histogram()
+pbp_passing <- pbp_r_p_1624 |>
+  filter(pass_attempt == 1 & !is.na(epa) & !is.na(air_yards)) |>  
+  mutate(
+    pass_type = ifelse(air_yards >= 20, "Long Pass (≥20 yards)", "Short Pass (<20 yards)")
+  )
+
+# Create a histogram of EPA per pass attempt by pass type
+ggplot(pbp_passing, aes(x = epa, fill = pass_type)) +
+  geom_histogram(binwidth = 0.5, position = "dodge", alpha = 0.7) +
+  labs(
+    title = "Histogram of EPA per Pass Attempt by Pass Type",
+    x = "EPA per Pass Attempt",
+    y = "Count",
+    fill = "Pass Type"
+  ) +
+  theme_minimal()
 
 # 2. Create the same boxplots as in "Histograms" on page 30 but for EPA per pass attempt
 
-ggplot(pbp_r_p_s_pl, aes(x = pbp_r_p_s_pl["pass_length_air_yards"] == "long", y = epa)) + 
-  geom_boxplot()
+# Filter for passing plays and categorize passes as long or short
+pbp_passing <- pbp_r_p_1624 |>
+  filter(pass_attempt == 1 & !is.na(epa) & !is.na(air_yards)) |>
+  mutate(
+    pass_type = ifelse(air_yards >= 20, "Long Pass (≥20 yards)", "Short Pass (<20 yards)")
+  )
+
+ggplot(pbp_passing, aes(x = pass_type, y = epa, fill = pass_type)) +
+  geom_boxplot() +
+  labs(
+    title = "Boxplot of EPA per Pass Attempt by Pass Type",
+    x = "Pass Type",
+    y = "EPA per Pass Attempt",
+    fill = "Pass Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") 
 
 # 3. Perform same stability analysis but for EPA per pass attempt. Are results similar?
 # So any players have similar YPA one year to the next but different EPA? 
 # Why? 
 
+# Calculate EPA per pass attempt by QB and season, separated by pass type
+epa_r <- pbp_r_p_1624 |>
+  select(passer_id, passer, season, pass_length_air_yards, epa) |>
+  group_by(passer_id, passer, pass_length_air_yards, season) |>
+  summarize(
+    n = n(),
+    epa_per_pass = mean(epa, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter((n >= 100 & pass_length_air_yards == "short") |
+           (n >= 30 & pass_length_air_yards == "long"))
+
+# Create lagged dataset for EPA stability analysis
+epa_lag_r <- epa_r |>
+  mutate(season = season + 1) |>
+  rename(epa_per_pass_last = epa_per_pass)
+
+# Merge current and lagged EPA data
+epa_stability <- epa_r |>
+  inner_join(epa_lag_r,
+             by = c("passer_id", "pass_length_air_yards", "season", "passer"))
+
+# Filter for specific players or analyze overall
+epa_stability |>
+  filter(passer %in% c("T.Brady", "A.Rodgers")) |>
+  print(n = Inf)
+
+# Scatterplot: EPA per pass attempt (Year n vs. Year n+1)
+scatter_epa_r <- ggplot(epa_stability, aes(x = epa_per_pass_last, y = epa_per_pass)) +
+  geom_point() +
+  facet_grid(cols = vars(pass_length_air_yards)) +
+  labs(
+    x = "EPA per Pass Attempt, Year n",
+    y = "EPA per Pass Attempt, Year n+1"
+  ) +
+  theme_bw() +
+  theme(strip.background = element_blank()) +
+  geom_smooth(method = "lm")
+
+print(scatter_epa_r)
+
+# Calculate correlation for EPA stability
+epa_stability |>
+  filter(!is.na(epa_per_pass) & !is.na(epa_per_pass_last)) |>
+  group_by(pass_length_air_yards) |>
+  summarize(correlation = cor(epa_per_pass, epa_per_pass_last))
+
+
 
 # 4. Find a cutoff that equally splits data for long pass vs short pass stability
 # Do the results stay the same? 
 
+# Find the median air_yards value to split into long and short passes
+equal_cutoff <- median(pbp_r_p_1624$air_yards, na.rm = TRUE)
 
+# Step 2: Reclassify passes based on the new cutoff
+pbp_r_p_1624 <- pbp_r_p_1624 |>
+  mutate(
+    pass_length_air_yards = ifelse(air_yards >= equal_cutoff, "long", "short")
+  )
+
+# Step 3: Calculate EPA per pass attempt using the new cutoff
+epa_r_equal <- pbp_r_p_1624 |>
+  select(passer_id, passer, season, pass_length_air_yards, epa) |>
+  group_by(passer_id, passer, pass_length_air_yards, season) |>
+  summarize(
+    n = n(),
+    epa_per_pass = mean(epa, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter((n >= 100 & pass_length_air_yards == "short") |
+           (n >= 30 & pass_length_air_yards == "long"))
+
+# Step 4: Create lagged dataset for stability analysis
+epa_lag_r_equal <- epa_r_equal |>
+  mutate(season = season + 1) |>
+  rename(epa_per_pass_last = epa_per_pass)
+
+# Step 5: Merge current and lagged EPA data
+epa_stability_equal <- epa_r_equal |>
+  inner_join(epa_lag_r_equal,
+             by = c("passer_id", "pass_length_air_yards", "season", "passer"))
+
+# Step 6: Visualize stability with scatterplots
+scatter_epa_r_equal <- ggplot(epa_stability_equal, aes(x = epa_per_pass_last, y = epa_per_pass)) +
+  geom_point() +
+  facet_grid(cols = vars(pass_length_air_yards)) +
+  labs(
+    title = "Stability of EPA per Pass Attempt with Equal Cutoff",
+    x = "EPA per Pass Attempt, Year n",
+    y = "EPA per Pass Attempt, Year n+1"
+  ) +
+  theme_bw() +
+  theme(strip.background = element_blank()) +
+  geom_smooth(method = "lm")
+
+print(scatter_epa_r_equal)
+
+# Step 7: Calculate correlation for EPA stability with the new cutoff
+epa_stability_equal |>
+  filter(!is.na(epa_per_pass) & !is.na(epa_per_pass_last)) |>
+  group_by(pass_length_air_yards) |>
+  summarize(correlation = cor(epa_per_pass, epa_per_pass_last))
