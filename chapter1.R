@@ -57,3 +57,37 @@ pbp_r_pass24 |>
 # to highter numbers for qb forced to throw
 # deep and repeatedly when down in the second
 # half of a football game.
+
+# Let's try and get these metrics now...
+
+# Factor Down&Distance and WR separation
+
+print(pbp_r_pass24)
+
+# Add a new column for down-and-distance aggression
+pbp_r_pass24 <- pbp_r_pass24 |>
+  mutate(
+    down_distance_aggression = ifelse(air_yards > (ydstogo + 10), 1, 0)
+  )
+
+# Summarize QB aggression metrics
+qb_aggression <- pbp_r_pass24 |>
+  group_by(passer_id, passer) |>
+  summarize(
+    n = n(),
+    avg_adot = mean(air_yards, na.rm = TRUE),
+    avg_down_distance_aggression = mean(down_distance_aggression, na.rm = TRUE)
+  ) |>
+  filter(n >= 100, !is.na(passer)) |>
+  arrange(desc(avg_down_distance_aggression), desc(avg_adot))
+
+# Print the results
+print(qb_aggression, n = Inf)
+
+# The results are similar, which does surprise me a bit
+# but this may also be from the same issues with bad
+# teams trying to come back. I can continue to raise
+# ydstogo with distance to see what changes.
+
+# I would expect to see some good qbs at top of list
+# Burrow, Allen, and Tua (due to Miami vertical attack)
