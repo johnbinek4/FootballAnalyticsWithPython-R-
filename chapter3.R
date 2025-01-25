@@ -251,5 +251,6 @@ ryoe_lag_r |>
 
 # Thoughts?
 
-
+# Suggested Readings are paywalled :(
+# After seeing 2025 Season it would seem the league has changed. 
 
